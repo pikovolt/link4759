@@ -4,7 +4,7 @@ import time
 import serial
 from serial.tools import list_ports
 
-ptnFilename = r'^[A-Z~_\-\d\s]{1,8}(\.vgm|\.s98)*\s+\d+\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s.*)*'
+ptnFilename = r'^[A-Z~_\-\d\s]{1,8}(\.vgm|\.s98)*\s+(\d+|<dir>)\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s.*)*'
 
 
 class Link4759():

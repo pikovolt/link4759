@@ -2,7 +2,7 @@
 import sys
 from PySide2.QtWidgets import (
     QLineEdit, QPushButton, QApplication, QVBoxLayout, QDialog, QListWidget)
-from serial_link_4759 import Link4759
+from link4759.serial_link_4759 import Link4759
 
 class Form(QDialog):
 

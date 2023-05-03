@@ -1,7 +1,7 @@
 # coding: utf-8
 import sys
 from PySide2.QtWidgets import (
-    QLineEdit, QPushButton, QApplication, QVBoxLayout, QDialog, QListWidget)
+    QPushButton, QApplication, QVBoxLayout, QDialog, QListWidget)
 from link4759.serial_link_4759 import Link4759
 
 class Form(QDialog):
@@ -12,19 +12,16 @@ class Form(QDialog):
         self.listWidget = QListWidget()
         self.btnPlay = QPushButton("play")
         self.btnStop = QPushButton("stop")
-        self.btnParent = QPushButton("parent dir")
         self.btnCd = QPushButton("change dir")
         # Create layout and add widgets
         layout = QVBoxLayout()
         layout.addWidget(self.listWidget)
         layout.addWidget(self.btnCd)
-        layout.addWidget(self.btnParent)
         layout.addWidget(self.btnPlay)
         layout.addWidget(self.btnStop)
         # Set dialog layout
         self.setLayout(layout)
         self.btnCd.clicked.connect(self.click_cd)
-        self.btnParent.clicked.connect(self.click_parent)
         self.btnPlay.clicked.connect(self.click_play)
         self.btnStop.clicked.connect(self.click_stop)
         # connect to 4759Player (& get directory list)
@@ -40,12 +37,6 @@ class Form(QDialog):
         self.listWidget.clear()
         self.listWidget.addItems(self.lnk.files)
 
-    def click_parent(self):
-        # change directory (move to parent-dir)
-        self.lnk.sd_cd('..')
-        self.listWidget.clear()
-        self.listWidget.addItems(self.lnk.files)
-
     def click_play(self):
         # play music
         self.lnk.play(self.listWidget.currentItem().text())
@@ -53,6 +44,7 @@ class Form(QDialog):
     def click_stop(self):
         # stop music
         self.lnk.stop()
+
 
 if __name__ == '__main__':
     # Create the Qt Application

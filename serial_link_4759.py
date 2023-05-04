@@ -4,7 +4,8 @@ import time
 import serial
 from serial.tools import list_ports
 
-ptnFilename = r'^((\.{2})|((?!\.).{1,8}(\.vgm|\.s98)*))\s+(\d+|<dir>)\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s.*)*'
+# target names: '..' or filename(8character) + (.vgm|.s98)
+ptnFilename = r'^(?P<filename>((\.{2})|((?!\.).{1,8}(\.vgm|\.s98)*)))\s+(\d+|<dir>)\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s+(?P<longname>.*))*'
 
 
 class Link4759():
@@ -23,14 +24,17 @@ class Link4759():
 
     # Update file list from response string
     try:
-      # search elements matching pattern (get the first 12 characters)
-      _flist = [l[:12].strip() for l in msg.split('\n') \
-                if re.search(ptnFilename, l, re.I)]
+      _flist = []
+      for l in msg.split('\n'):
+        m = re.search(ptnFilename, l, re.I)
+        if m:
+          fname = ''.join(m.group('filename').split())  #(delete white-space)
+          lname = m.group('longname')
+          _flist.append((fname, lname))
     except:
       _flist = []
     finally:
       if _flist:
-        _flist = [''.join(f.split()) for f in _flist]   #(delete white-space)
         self.files = _flist
 
   def help(self):
@@ -55,21 +59,27 @@ class Link4759():
 
   def play_list(self, filenames, interval=5.0):
     # play list (at current dirctory)
-    for filename in filenames:
+    for filename, longname in filenames:
       self.play(filename)
+      t = time.time()
       while True:
-        time.sleep(interval)
+        r = (time.time() - t) % interval
+        time.sleep(interval - r)
         info = self.play_state()
         if 'Not playing' in info:
           break
         print('\r'+info.split('\n')[-2], end='')
       print('')
+    print('play list loop finished.')
 
-  def play(self, filename):
+  def play(self, filename, display_name=None):
     # play music
     name = find_name(filename, self.files)
     _fname = name if name else filename
-    send_cmd('play %s' % _fname, self.ser)
+    silent = False if display_name is None else True
+    send_cmd('play %s' % _fname, self.ser, silent=silent)
+    if silent:
+      print('play %s\n-' % display_name)
 
   def stop(self):
     # stop music
@@ -84,16 +94,22 @@ class Link4759():
     else:
       self.ser.port = devices[0] if port_name is None else port_name
       self.ser.baudrate = baudrate
-      self.ser.open()
-      print('%s, %dbaud linked.' % (self.ser.port, baudrate))
+      if not port_open(self.ser):
+        print('COM port(%s) could not open.' % self.ser.port)
+      else:
+        print('%s, %dbaud linked.' % (self.ser.port, baudrate))
 
   def disconnect(self):
     # disconnect serial connection to 4759Player
-    print('%s close.' % (self.ser.port))
     try:
-      self.ser.close()
-    except:
-      pass
+      if not self.ser.is_open:
+        print('%s closed.' % (self.ser.port))
+      else:
+        self.ser.close()
+        if not self.ser.is_open:
+          print('%s closed.' % (self.ser.port))
+    except Exception as e:
+      print(e)
 
   def print_files(self):
     # print directory list
@@ -102,13 +118,31 @@ class Link4759():
       print(i)
     print('-'*12)
 
+  def send(self, cmd, silent=False):
+    # send command
+    send_cmd(cmd, self.ser, silent)
+
+
+def port_open(ser, chalenge=5, interval=2):
+  # serial port open (chalenge 5 time, interval 2sec)
+  for i in range(chalenge):
+    try:
+      ser.open()
+      if ser.is_open:
+        return True
+    except serial.serialutil.SerialException as e:
+      print(e)
+    if i < chalenge:
+      time.sleep(interval)
+  return False
+
 
 def find_name(keyword, files):
   # Find names containing strings
   _names = []
-  for f in files:
-    if keyword in f:
-      _names.append(f)
+  for filename, longname in files:
+    if keyword in filename:
+      _names.append(filename)
   if len(_names) == 1:
     return _names[0]
 
@@ -151,7 +185,7 @@ def print_recv(ser, silent=False):
 
 
 def examples():
-  from link4759.serial_link_4759 import Link4759
+  from serial_link_4759 import Link4759
 
   lnk = Link4759()
 
@@ -164,14 +198,26 @@ def examples():
   # print current file(or dir) list
   lnk.files_print()
 
+  # print help
+  lnk.help()
+
+  # send command
+  lnk.send('fm')
+
   # change current dir
   lnk.sd_cd('foo')
 
   # play music (input filename)
   lnk.play('01_bar.vgm')
+  lnk.play('02_foobar.vgm')
 
   # play music (input keyword)
   lnk.play('01')
+  lnk.play('02')
+
+  # play music (name-list)
+  lnk.play(lnk.files[1:])
+  lnk.play(['01', '02'])
 
   # stop music
   lnk.stop()

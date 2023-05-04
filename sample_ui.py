@@ -5,6 +5,7 @@ from PySide2.QtWidgets import (
 from PySide2 import QtCore
 from link4759.serial_link_4759 import Link4759
 
+
 class Form(QDialog):
 
     def __init__(self, parent=None):
@@ -84,7 +85,7 @@ class Form(QDialog):
             if filename:
                 self.lnk.play(filename, display_name=dispname)
         else:
-            # play (run thread)
+            # multi (run thread)
             dispnames = [i.text() for i in items]
             files = [(self._find_filename(l), l) for l in dispnames]
             if not self.multi:
@@ -142,9 +143,9 @@ class PlayListThread(QtCore.QThread):
                 if self.stopped:
                     return
                 info = self.lnk.play_state()
-                if 'Not playing' in info:
+                if 'playing...' not in info:
                     break
-                print('\r'+info.split('\n')[-2], end='')
+                print('\r'+info.split('\n')[-2], end='')    # (play time)
                 r = (time.time() - t) % self.interval
                 time.sleep(self.interval - r)
             print('')

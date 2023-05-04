@@ -7,19 +7,17 @@ from serial.tools import list_ports
 # target names: '..' or filename(8character) + (.vgm|.s98)
 ptnFilename = r'^(?P<filename>((\.{2})|((?!\.).{1,8}(\.vgm|\.s98)*)))\s+(\d+|<dir>)\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s+(?P<longname>.*))*'
 
-
 class Link4759():
 
-  def __init__(self):
+  def __init__(self, timeout=2):
     self.files = []
-    self.ser = serial.Serial()
+    self.ser = serial.Serial(timeout=timeout)
 
   def __del__(self):
     self.disconnect()
 
   def _get_dir_list(self, cmd):
     # (change current-directory or get directory-list)
-    self.ser.reset_input_buffer()
     msg = send_cmd(cmd, self.ser)
 
     # Update file list from response string
@@ -66,9 +64,9 @@ class Link4759():
         r = (time.time() - t) % interval
         time.sleep(interval - r)
         info = self.play_state()
-        if 'Not playing' in info:
+        if 'playing...' not in info:
           break
-        print('\r'+info.split('\n')[-2], end='')
+        print('\r'+info.split('\n')[-2], end='')  # (play time)
       print('')
     print('play list loop finished.')
 
@@ -169,6 +167,7 @@ def wait_msg(ser):
 
 def send_cmd(cmd, ser, silent=False):
   # send command
+  ser.reset_input_buffer()
   ser.write((cmd+'\r').encode('utf-8'))
   return print_recv(ser, silent)
 

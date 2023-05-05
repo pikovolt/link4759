@@ -124,7 +124,6 @@ class PlayListThread(QtCore.QThread):
         # thread stop
         with QtCore.QMutexLocker(self.mutex):
             self.stopped = True
-        self.wait()
 
     def set_files(self, files):
         # set play list

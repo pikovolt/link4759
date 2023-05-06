@@ -17,20 +17,6 @@ def port_open(ser, chalenge=5, interval=2):
     return False
 
 
-def wait_msg(ser):
-    # before recive wait
-    s = ser.inWaiting()
-    while ser.inWaiting() == s:
-        time.sleep(0.1)
-
-    # receiving wait
-    dif = True
-    while dif:
-        s = ser.inWaiting()
-        time.sleep(0.1)
-        dif = (s < ser.inWaiting())
-
-
 def send_cmd(cmd, ser, silent=False):
     # send command
     ser.reset_input_buffer()
@@ -41,7 +27,7 @@ def send_cmd(cmd, ser, silent=False):
 def print_recv(ser, silent=False):
     # get response (& print)
     msg = ''
-    wait_msg(ser)
+    time.sleep(0.5)
     while ser.inWaiting() > 0:
         msg += ser.read().decode('utf-8')
     if not silent:

@@ -6,8 +6,8 @@ from serial.tools import list_ports
 from funcs import port_open, send_cmd
 from dir_item import DirList
 
-# target names: '..' or filename(8character) + (.vgm|.s98)
-ptnFilename = r'^(?P<filename>((\.{2})|((?!\.).{1,11}(\.vgm|\.s98)*)))\s+(?P<size_type>(\d+|<dir>))\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s+(?P<longname>.*))*'
+# target names: '..' or filename(8character) + (.vgm|.s98|.mdx)
+ptnFilename = r'^(?P<filename>((\.{2})|((?!\.).{1,11}(\.vgm|\.s98|\.mdx)*)))\s+(?P<size_type>(\d+|<dir>))\s{2}\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\s+(?P<longname>.*))*'
 
 
 class Link4759():

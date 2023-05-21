@@ -29,7 +29,7 @@ PySide2を使った簡単なUIサンプル(sample_ui.py)も追加しておきま
 　※RaspberryPi4 & 2023/5/03版のraspios_arm64版OSで動作を確認
 
  Python3, PySerialも入っていましたが PySide2が入っておらず、別途インストールが必要でした。  
- このページが参考になりました。（https://matsujirushi.hatenablog.jp/entry/2021/04/10/212246）  
+ このページが参考になりました。（ https://matsujirushi.hatenablog.jp/entry/2021/04/10/212246 ）  
  ただ１点 'python3-pyside2uic'が見付からない。という警告で apt-getが止まってしまうので、'python3-pyside2uic'は、省く必要がありました。
 
 

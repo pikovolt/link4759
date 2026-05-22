@@ -1,154 +1,232 @@
 # coding: utf-8
+from __future__ import annotations
+
 import sys
 
-from PySide2.QtWidgets import (
-    QPushButton, QApplication, QHBoxLayout, QVBoxLayout,
-    QDialog, QListWidget, QAbstractItemView, QInputDialog)
-from link4759.serial_thread.serial_link_4759 import Link4759
-from link4759.serial_thread.serial_thread import SerialThread
+from PySide6 import QtCore
+from PySide6.QtWidgets import (
+    QApplication,
+    QAbstractItemView,
+    QDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QListWidget,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+)
+
+from .commands import CommandKind, CommandRequest, CommandResult
+from .dir_item import DirList, DirItem
+from .serial_worker import SerialWorker
 
 
 class Form(QDialog):
+    """PySide2 UI.
+
+    Design rule:
+        This class never touches serial.Serial.
+        It only sends CommandRequest objects to SerialWorker.
+    """
+
+    request_command = QtCore.Signal(object)
 
     def __init__(self, parent=None):
-        super(Form, self).__init__(parent)
-        self.setWindowTitle("link 4759Player")
-        # Create widgets
+        super().__init__(parent)
+        self.setWindowTitle("link 4759Player - threaded sample")
+
+        self._dirlist = DirList()
+
         self.listWidget = QListWidget()
+        self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.logEdit = QTextEdit()
+        self.logEdit.setReadOnly(True)
+
+        self.btnConnect = QPushButton("connect")
+        self.btnDisconnect = QPushButton("disconnect")
+        self.btnDir = QPushButton("get dir")
+        self.btnCd = QPushButton("change dir")
         self.btnPlay = QPushButton("play")
         self.btnStop = QPushButton("stop")
-        self.btnCd = QPushButton("change dir")
-        self.btnDir = QPushButton("get dir")
         self.btnHelp = QPushButton("help")
         self.btnSend = QPushButton("send")
-        # set selectionmode
-        self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # Create layout and add widgets
+
+        self._build_layout()
+        self._wire_ui()
+
+        self.thread = QtCore.QThread(self)
+        self.worker = SerialWorker()
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.start)
+        self.request_command.connect(self.worker.enqueue)
+
+        self.worker.connected.connect(self.on_connected)
+        self.worker.disconnected.connect(self.on_disconnected)
+        self.worker.log_received.connect(self.append_log)
+        self.worker.error_occurred.connect(self.append_error)
+        self.worker.status_received.connect(self.append_status)
+        self.worker.directory_updated.connect(self.on_directory_updated)
+        self.worker.busy_changed.connect(self.on_busy_changed)
+        self.worker.command_finished.connect(self.on_command_finished)
+
+        self.thread.start()
+        self._set_connected_ui(False)
+
+    def _build_layout(self) -> None:
         layout = QVBoxLayout()
         layout.addWidget(self.listWidget)
-        sublayout = QHBoxLayout()
-        sublayout.addWidget(self.btnCd)
-        sublayout.addWidget(self.btnDir)
-        layout.addLayout(sublayout)
-        sublayout = QHBoxLayout()
-        sublayout.addWidget(self.btnPlay)
-        sublayout.addWidget(self.btnStop)
-        layout.addLayout(sublayout)
-        sublayout = QHBoxLayout()
-        sublayout.addWidget(self.btnHelp)
-        sublayout.addWidget(self.btnSend)
-        layout.addLayout(sublayout)
-        # Set dialog layout
+        layout.addWidget(self.logEdit)
+
+        row = QHBoxLayout()
+        row.addWidget(self.btnConnect)
+        row.addWidget(self.btnDisconnect)
+        layout.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(self.btnCd)
+        row.addWidget(self.btnDir)
+        layout.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(self.btnPlay)
+        row.addWidget(self.btnStop)
+        layout.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(self.btnHelp)
+        row.addWidget(self.btnSend)
+        layout.addLayout(row)
+
         self.setLayout(layout)
-        #
-        self.btnCd.clicked.connect(self.click_cd)
+
+    def _wire_ui(self) -> None:
+        self.btnConnect.clicked.connect(self.click_connect)
+        self.btnDisconnect.clicked.connect(self.click_disconnect)
         self.btnDir.clicked.connect(self.click_dir)
+        self.btnCd.clicked.connect(self.click_cd)
         self.btnPlay.clicked.connect(self.click_play)
         self.btnStop.clicked.connect(self.click_stop)
         self.btnHelp.clicked.connect(self.click_help)
         self.btnSend.clicked.connect(self.click_send)
-        self.listWidget.itemDoubleClicked.connect(self.dblclick_list)
-        # connect to 4759Player (& get directory list)
-        self.lnk = Link4759()
-        self.lnk.connect(baudrate=19200)
-        self.lnk.sd_dir()
-        self._update_listwidget()
-        # create thread
-        self.serial_thread = SerialThread(self.lnk.ser, self)
-        self.serial_thread.receiving[str].connect(self.receive_str)
-        self.serial_thread.start()
+        self.listWidget.itemDoubleClicked.connect(self.double_click_list)
 
-    def _update_listwidget(self):
-        # update listWidget items
-        dispnames = [i.dispname for i in self.lnk.files.items]
-        self.listWidget.clear()
-        self.listWidget.addItems(dispnames)
+    def _emit(self, kind: CommandKind, **payload) -> None:
+        self.request_command.emit(CommandRequest(kind=kind, payload=payload))
 
-    def closeEvent(self, event):
-        self.serial_thread.terminate()
-        self.lnk.stop()
-        del self.lnk
+    def click_connect(self) -> None:
+        self._emit(CommandKind.CONNECT, port_name=None, baudrate=19200, timeout=0.0)
 
-    def receive_str(self, str):
-        # print('Signal: receive')
-        self.last_receive_str = str
-        print(self.last_receive_str, flush=True)
+    def click_disconnect(self) -> None:
+        self._emit(CommandKind.DISCONNECT)
 
-    def dblclick_list(self, item):
-        # double click (sd_cd or play)
-        res = self.lnk.files.find_item(item.text()) if item and item.text() else None
-        if res:
-            if res.is_dir:
-                self.click_cd()
-            else:
-                self.click_play()
+    def click_dir(self) -> None:
+        self._emit(CommandKind.SD_DIR)
 
-    def click_help(self):
-        # print help
-        if not self.serial_thread.isRunning():
-            print('thread stopped.')
-        else:
-            print('thread running.')
-            self.lnk.send('help')
-
-    def click_send(self):
-        # send command
-        if not self.serial_thread.isRunning():
-            print('thread stopped.')
-        else:
-            print('thread running.')
-            text, ok = QInputDialog().getText(
-                self, "Input command", "command:")
-            if ok and text:
-                self.lnk.ser.reset_input_buffer()
-                self.lnk.send(text)
-
-    def click_dir(self):
-        # get directory
-        if self.serial_thread.stop():
-            self.lnk.sd_dir()
-            self._update_listwidget()
-            self.serial_thread.start()
-
-    def click_cd(self):
-        # change directory (move to child-dir)
-
-        if not self.listWidget.currentItem():
+    def click_cd(self) -> None:
+        item = self._current_dir_item()
+        if item is None:
             return
+        if not item.is_dir:
+            self.append_log("> selected item is not a directory")
+            return
+        self._emit(CommandKind.CD, dirname=item.filename)
 
-        if self.serial_thread.stop():
-            res = self.lnk.files.find_item(self.listWidget.currentItem().text())
-            if res:
-                self.lnk.sd_cd(res.filename)
-                self._update_listwidget()
-            self.serial_thread.start()
+    def click_play(self) -> None:
+        item = self._current_dir_item()
+        if item is None:
+            return
+        if item.is_dir:
+            self.append_log("> selected item is a directory")
+            return
+        self._emit(CommandKind.PLAY, filename=item.filename)
 
-    def click_play(self):
-        # play music
+    def click_stop(self) -> None:
+        self._emit(CommandKind.STOP)
 
-        if self.serial_thread.stop():
-            items = self.listWidget.selectedItems()
-            if len(items) == 1:
-                # single
-                res = self.lnk.files.find_item(self.listWidget.currentItem().text())
-                if res:
-                    self.lnk.play(res.filename, display_name=res.dispname)
-            self.serial_thread.start()
+    def click_help(self) -> None:
+        self._emit(CommandKind.HELP)
 
-    def click_stop(self):
-        # stop music
+    def click_send(self) -> None:
+        text, ok = QInputDialog.getText(self, "Input command", "command:")
+        if ok and text:
+            self._emit(CommandKind.RAW, text=text)
 
-        if self.serial_thread.stop():
-            print('')
-            self.lnk.stop()
-            self.serial_thread.start()
+    def double_click_list(self, _item) -> None:
+        item = self._current_dir_item()
+        if item is None:
+            return
+        if item.is_dir:
+            self.click_cd()
+        else:
+            self.click_play()
+
+    def _current_dir_item(self) -> DirItem | None:
+        current = self.listWidget.currentItem()
+        if current is None:
+            return None
+        return self._dirlist.find_item(current.text())
+
+    @QtCore.Slot(str, int)
+    def on_connected(self, port_name: str, baudrate: int) -> None:
+        self.append_log(f"> connected: {port_name}, {baudrate} baud")
+        self._set_connected_ui(True)
+        self.click_dir()
+
+    @QtCore.Slot()
+    def on_disconnected(self) -> None:
+        self.append_log("> disconnected")
+        self._set_connected_ui(False)
+
+    @QtCore.Slot(object)
+    def on_directory_updated(self, dirlist: DirList) -> None:
+        self._dirlist = dirlist
+        self.listWidget.clear()
+        self.listWidget.addItems([item.dispname for item in dirlist])
+        self.append_log(f"> directory updated: {len(dirlist)} entries")
+
+    @QtCore.Slot(bool)
+    def on_busy_changed(self, busy: bool) -> None:
+        for button in (self.btnDir, self.btnCd, self.btnPlay, self.btnStop, self.btnHelp, self.btnSend):
+            button.setEnabled(not busy)
+
+    @QtCore.Slot(object)
+    def on_command_finished(self, result: CommandResult) -> None:
+        state = "OK" if result.ok else "NG"
+        self.append_log(f"> command finished: {result.kind.value} [{state}]")
+
+    @QtCore.Slot(str)
+    def append_log(self, text: str) -> None:
+        if text:
+            self.logEdit.append(text)
+
+    @QtCore.Slot(str)
+    def append_error(self, text: str) -> None:
+        if text:
+            self.logEdit.append(f"[ERROR] {text}")
+
+    @QtCore.Slot(str)
+    def append_status(self, text: str) -> None:
+        if text:
+            self.logEdit.append(f"[STATUS] {text}")
+
+    def _set_connected_ui(self, connected: bool) -> None:
+        self.btnConnect.setEnabled(not connected)
+        self.btnDisconnect.setEnabled(connected)
+        for button in (self.btnDir, self.btnCd, self.btnPlay, self.btnStop, self.btnHelp, self.btnSend):
+            button.setEnabled(connected)
+
+    def closeEvent(self, event) -> None:
+        QtCore.QMetaObject.invokeMethod(self.worker, "request_stop", QtCore.Qt.BlockingQueuedConnection)
+        self.thread.quit()
+        self.thread.wait(3000)
+        event.accept()
 
 
-if __name__ == '__main__':
-    # Create the Qt Application
+def main() -> None:
     app = QApplication(sys.argv)
-    # Create and show the form
     form = Form()
+    form.resize(700, 520)
     form.show()
-    # Run the main Qt loop
     sys.exit(app.exec_())
